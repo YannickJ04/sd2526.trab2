@@ -1,12 +1,17 @@
 package sd2526.trab.impl.grpc.servers;
 
-
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.security.KeyStore;
 import java.util.List;
 import java.util.logging.Logger;
 
+import javax.net.ssl.KeyManagerFactory;
+
 import io.grpc.Server;
-import io.grpc.ServerBuilder;
+import io.grpc.netty.GrpcSslContexts;
+import io.grpc.netty.NettyServerBuilder;
+import io.netty.handler.ssl.SslContextBuilder;
 import sd2526.trab.impl.discovery.Discovery;
 import sd2526.trab.impl.java.servers.AbstractServer;
 import sd2526.trab.impl.utils.IP;
@@ -21,14 +26,37 @@ public abstract class AbstractGrpcServer extends AbstractServer {
 
 	protected AbstractGrpcServer(Logger log, String service, int port) {
 		super(log, service, String.format(SERVER_BASE_URI, IP.hostAddress(), port, GRPC_CTX));
-		
-		var builder = ServerBuilder.forPort(port);
-		for( var s : controllers( super.serverURI ) )
-			builder.addService( s );
-		
-		this.server = builder.build();
+
+		String keyStoreFilename = System.getProperty("javax.net.ssl.keyStore");
+		String keyStorePassword = System.getProperty("javax.net.ssl.keyStorePassword");
+
+		try {
+			KeyStore keystore = KeyStore.getInstance(KeyStore.getDefaultType());
+			try (FileInputStream input = new FileInputStream(keyStoreFilename)) {
+				keystore.load(input, keyStorePassword.toCharArray());
+			}
+
+			KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(
+					KeyManagerFactory.getDefaultAlgorithm());
+			keyManagerFactory.init(keystore, keyStorePassword.toCharArray());
+
+			var sslContext = GrpcSslContexts.configure(
+					SslContextBuilder.forServer(keyManagerFactory)
+			).build();
+
+			var builder = NettyServerBuilder.forPort(port).sslContext(sslContext);
+			for (var s : controllers(super.serverURI))
+				builder.addService(s);
+
+			this.server = builder.build();
+
+		} catch (Exception e) {
+			throw new RuntimeException("Failed to initialize gRPC TLS server", e);
+		}
+
 		sd2526.trab.impl.db.Hibernate.getInstance();
 	}
+
 
 	protected abstract List<GrpcController> controllers( String uri );
 	

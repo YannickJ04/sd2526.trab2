@@ -5,6 +5,7 @@ import java.util.logging.Logger;
 import org.glassfish.jersey.server.ResourceConfig;
 
 import sd2526.trab.api.java.Users;
+import sd2526.trab.impl.utils.ServerSecret;
 
 public class RestUsersServer extends AbstractRestServer {
 	public static final int PORT = 3456;
@@ -21,6 +22,12 @@ public class RestUsersServer extends AbstractRestServer {
 	}
 	
 	public static void main(String[] args) {
+		for (int i = 0; i < args.length - 1; i++) {
+			if (args[i].equals("-secret")) {
+				ServerSecret.set(args[i+1]);
+				System.out.println("Server secret set.");
+			}
+		}
 		new RestUsersServer().start();
 	}	
 }

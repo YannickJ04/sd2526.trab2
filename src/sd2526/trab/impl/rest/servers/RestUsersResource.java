@@ -4,6 +4,10 @@ import java.util.List;
 import java.util.Set;
 
 import jakarta.inject.Singleton;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.Response;
 import sd2526.trab.api.User;
 import sd2526.trab.api.java.Users;
 import sd2526.trab.api.rest.RestUsers;
@@ -11,13 +15,17 @@ import sd2526.trab.impl.api.java.AdminUsers;
 import sd2526.trab.impl.api.rest.RestAdminUsers;
 import sd2526.trab.impl.java.clients.Clients;
 import sd2526.trab.impl.java.servers.JavaUsers;
+import sd2526.trab.impl.utils.ServerSecret;
 
 @Singleton
 public class RestUsersResource extends RestResource implements RestUsers, RestAdminUsers {
 
 	static boolean isGateway = false;
 	
-	Users impl;	
+	Users impl;
+
+	@Context
+    HttpHeaders headers;
 
 	synchronized Users impl() {
 		if( impl == null )
@@ -29,6 +37,13 @@ public class RestUsersResource extends RestResource implements RestUsers, RestAd
 	
 	RestUsersResource(boolean gw) {	
 		isGateway = gw;
+	}
+
+	private void checkSecret() {
+		String incoming = headers.getHeaderString(ServerSecret.SECRET_HEADER);
+		if (!ServerSecret.isValid(incoming)) {
+			throw new WebApplicationException(Response.Status.FORBIDDEN);
+		}
 	}
 	
 	@Override
@@ -58,6 +73,7 @@ public class RestUsersResource extends RestResource implements RestUsers, RestAd
 
 	@Override
 	public Set<String> checkUsers(Set<String> names) {
+		checkSecret();
 		return super.resultOrThrow(((AdminUsers)impl).checkUsers(names));
 	}
 }

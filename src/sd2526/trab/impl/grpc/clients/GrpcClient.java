@@ -4,15 +4,21 @@ import static sd2526.trab.api.java.Result.error;
 import static sd2526.trab.api.java.Result.ok;
 import static sd2526.trab.api.java.Result.ErrorCode.INTERNAL_ERROR;
 
+import java.io.FileInputStream;
 import java.net.URI;
+import java.security.KeyStore;
 import java.util.function.Supplier;
 
 import io.grpc.Channel;
-import io.grpc.ManagedChannelBuilder;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
+import io.grpc.netty.GrpcSslContexts;
+import io.grpc.netty.NettyChannelBuilder;
+import io.netty.handler.ssl.SslContextBuilder;
 import sd2526.trab.api.java.Result;
 import sd2526.trab.api.java.Result.ErrorCode;
+
+import javax.net.ssl.TrustManagerFactory;
 
 public class GrpcClient {
 
@@ -21,8 +27,32 @@ public class GrpcClient {
 	
 	protected GrpcClient(String serverUrl) {
 		this.serverURI = URI.create(serverUrl);
-		this.channel = ManagedChannelBuilder.forAddress(serverURI.getHost(), serverURI.getPort())
-				.usePlaintext().enableRetry().build();
+		String trustStoreFilename = System.getProperty("javax.net.ssl.trustStore");
+		String trustStorePassword = System.getProperty("javax.net.ssl.trustStorePassword");
+
+		try {
+			KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
+			try (FileInputStream input = new FileInputStream(trustStoreFilename)) {
+				trustStore.load(input, trustStorePassword.toCharArray());
+			}
+
+			TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(
+					TrustManagerFactory.getDefaultAlgorithm());
+			trustManagerFactory.init(trustStore);
+
+			var sslContext = GrpcSslContexts.configure(
+					SslContextBuilder.forClient().trustManager(trustManagerFactory)
+			).build();
+
+			this.channel = NettyChannelBuilder
+					.forAddress(serverURI.getHost(), serverURI.getPort())
+					.sslContext(sslContext)
+					.enableRetry()
+					.build();
+
+		} catch (Exception e) {
+			throw new RuntimeException("Failed to start gRPC TLS context", e);
+		}
 	}
 	
 	protected <T> Result<T> toJavaResult(Supplier<T> func) {

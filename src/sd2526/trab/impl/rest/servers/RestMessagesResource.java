@@ -3,6 +3,10 @@ package sd2526.trab.impl.rest.servers;
 import java.util.List;
 
 import jakarta.inject.Singleton;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.Response.Status;
 import sd2526.trab.api.Message;
 import sd2526.trab.api.java.Messages;
 import sd2526.trab.api.rest.RestMessages;
@@ -10,67 +14,105 @@ import sd2526.trab.impl.api.java.AdminMessages;
 import sd2526.trab.impl.api.rest.RestAdminMessages;
 import sd2526.trab.impl.java.clients.Clients;
 import sd2526.trab.impl.java.servers.JavaMessages;
+import sd2526.trab.impl.java.servers.ReplicatedJavaMessages;
+import sd2526.trab.impl.utils.ServerSecret;
 
 @Singleton
 public class RestMessagesResource extends RestResource implements RestMessages, RestAdminMessages {
-	
+
 	static boolean isGateway = false;
-	
-	Messages impl;	
+	static boolean isReplicated = false;
+
+	Messages impl;
+
+	@Context
+	HttpHeaders headers;
 
 	synchronized Messages impl() {
-		if( impl == null )
-			impl = isGateway ? Clients.MessagesClient.get() : JavaMessages.getInstance();	
+		if (impl == null) {
+			if (isGateway)
+				impl = Clients.MessagesClient.get();
+			else if (isReplicated)
+				impl = ReplicatedJavaMessages.getInstance();
+			else
+				impl = JavaMessages.getInstance();
+		}
 		return impl;
 	}
-	
+
 	public RestMessagesResource() {}
-	
-	RestMessagesResource(boolean gw) {	
+
+	RestMessagesResource(boolean gw) {
 		isGateway = gw;
 	}
-	
+
+	private void checkSecret() {
+		String incoming = headers.getHeaderString(ServerSecret.SECRET_HEADER);
+		if (!ServerSecret.isValid(incoming))
+			throw new WebApplicationException(Status.FORBIDDEN);
+	}
+
+	private void checkVersion(long clientVersion) {
+		if (!isReplicated) return;
+		var replicated = ReplicatedJavaMessages.getInstance();
+		if (replicated != null && replicated.getVersion() < clientVersion)
+			throw new WebApplicationException(503);
+	}
+
+	private long getClientVersion() {
+		try {
+			String v = headers.getHeaderString(ReplicatedJavaMessages.VERSION_HEADER);
+			return v != null ? Long.parseLong(v) : 0L;
+		} catch (NumberFormatException e) {
+			return 0L;
+		}
+	}
+
 	@Override
 	public String postMessage(String pwd, Message msg) {
-		return super.resultOrThrow( impl().postMessage(pwd, msg));
+		return super.resultOrThrow(impl().postMessage(pwd, msg));
 	}
-	
+
 	@Override
 	public Message getMessage(String name, String mid, String pwd) {
-		return super.resultOrThrow( impl().getInboxMessage(name, mid, pwd));
+		checkVersion(getClientVersion());
+		return super.resultOrThrow(impl().getInboxMessage(name, mid, pwd));
 	}
-	
+
 	@Override
 	public List<String> getMessages(String name, String pwd, String query) {
-		if( query != null && ! query.isEmpty() )
-			return super.resultOrThrow( impl().searchInbox(name, pwd, query));
+		checkVersion(getClientVersion());
+		if (query != null && !query.isEmpty())
+			return super.resultOrThrow(impl().searchInbox(name, pwd, query));
 		else
-			return super.resultOrThrow(impl().getAllInboxMessages(name, pwd));		
+			return super.resultOrThrow(impl().getAllInboxMessages(name, pwd));
 	}
-	
+
 	@Override
 	public void removeFromUserInbox(String name, String mid, String pwd) {
-		super.resultOrThrow( impl().removeInboxMessage(name, mid, pwd) );
-		
+		super.resultOrThrow(impl().removeInboxMessage(name, mid, pwd));
 	}
-	
+
 	@Override
 	public void deleteMessage(String name, String mid, String pwd) {
-		super.resultOrThrow( impl().deleteMessage(name, mid, pwd));
+		super.resultOrThrow(impl().deleteMessage(name, mid, pwd));
 	}
 
 	@Override
 	public void remotePostMessage(Message m) {
-		super.resultOrThrow( ((AdminMessages)impl()).remotePostMessage(m));
+		checkSecret();
+		super.resultOrThrow(((AdminMessages) impl()).remotePostMessage(m));
 	}
 
 	@Override
 	public void remoteDeleteMessage(String mid) {
-		super.resultOrThrow( ((AdminMessages)impl()).remoteDeleteMessage(mid));
+		checkSecret();
+		super.resultOrThrow(((AdminMessages) impl()).remoteDeleteMessage(mid));
 	}
 
 	@Override
 	public void remoteDeleteUserInbox(String name) {
-		super.resultOrThrow( ((AdminMessages)impl()).remoteDeleteUserInbox(name));
+		checkSecret();
+		super.resultOrThrow(((AdminMessages) impl()).remoteDeleteUserInbox(name));
 	}
 }
