@@ -7,8 +7,8 @@ import java.util.logging.Logger;
 import sd2526.trab.api.java.Users;
 
 public class GrpcUsersServer extends AbstractGrpcServer {
-public static final int PORT = 13456;
-	
+	public static final int PORT = 8083;
+
 	private static Logger Log = Logger.getLogger(GrpcUsersServer.class.getName());
 
 	public GrpcUsersServer() {

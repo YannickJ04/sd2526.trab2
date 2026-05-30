@@ -7,8 +7,8 @@ import java.util.logging.Logger;
 import sd2526.trab.api.java.Messages;
 
 public class GrpcMessagesServer extends AbstractGrpcServer {
-public static final int PORT = 14567;
-	
+	public static final int PORT = 8084;
+
 	private static Logger Log = Logger.getLogger(GrpcMessagesServer.class.getName());
 
 	public GrpcMessagesServer() {
